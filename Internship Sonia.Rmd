@@ -1,0 +1,190 @@
+---
+title: "Language development of 2-year-old children from the ELFE cohort as a function of family characteristics"
+author: "Sofya Goldina"
+output:
+  html_document: 
+    toc: yes
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, warning=TRUE, message=TRUE)
+```
+
+## Download packages and data
+
+
+```{r }
+library(tidyverse)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(mice)
+library(miceadds)
+library(plotrix)
+setwd("/Users/troubledmuffin/Downloads")
+dataelfe <- load.Rdata2("ALL_elfe_imp.Rdata", path = getwd())
+#complete(dataelfe, "long", include=T)
+```
+ 
+# Overview of the data
+ 
+
+## Distribution of the McArthur scores (overall, girls/boys)
+ 
+```{r }
+dataelfe$data$sex <- ifelse(dataelfe$data$sex == 1, "male", "female")
+hist(dataelfe$data$mc_arthur, breaks = 25, xlab = "McArthur score",
+      main = "Distribution of McArthur scores across participants ")
+ggplot(dataelfe$data[which(!is.na(dataelfe$data$sex)),], aes(x = mc_arthur, fill = sex)) + geom_histogram() +
+  labs(x = "McArthur Score")
+dataelfe$data[which(!is.na(dataelfe$data$sex)),] %>%
+  group_by(sex) %>% 
+  summarise(meanMc=mean(mc_arthur), sd = sd(mc_arthur)) %>% 
+  ggplot(aes(x=sex, y = meanMc)) +
+  geom_bar(stat = "identity", width = 0.5)+
+  geom_errorbar(aes(ymin = meanMc-sd, ymax = meanMc+sd), width=.2)+
+  labs(x = "Sex", y="McArthur Score")
+```
+## Look at the controls
+
+
+
+
+
+
+
+# 1) Does having older siblings influence language development, compared to having none?
+## Analysis restricted to children with zero or one older sibling (strict replication of Havron et al.)
+
+#How many participants + Linear model + graphe representing the results
+
+```{r reg1}
+dataelfe1 <- filter(dataelfe, nsib <= 1)
+nrow(dataelfe1$data)
+dataelfe1$data$nsib <- as.factor(dataelfe1$data$nsib)
+modzeroone <-  with(dataelfe1,lm(mc_arthur ~ nsib + sex + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding))
+summary(pool(modzeroone))
+dataelfe1$data %>%
+  group_by(nsib)%>%
+  summarise(meanMC = mean(mc_arthur), sd = std.error(mc_arthur)) %>%
+  ggplot(aes(x = nsib, y = meanMC)) + geom_point() + geom_errorbar(aes(ymin = meanMC-sd, ymax = meanMC+sd), width=.2) + labs( x = "Number of older siblings", y = "McArthur score")
+```
+#10140 part
+#Conclusion:
+#The more siblings you have, the less your McArthur score.
+
+# 2) Does the effect of older sibling(s) depend on their sex?
+## Analysis restricted to children with one older sibling (replication of Havron et al.)
+
+#How many participants + Linear model + graphe
+
+```{r reg2}
+dataelfe2 <- filter(dataelfe, nsib == 1)
+nrow(dataelfe2$data)
+modsex <-  with(dataelfe2,lm(mc_arthur ~ sisters + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding + sex))
+summary(pool(modsex))
+dataelfe2$data %>%
+  group_by(sisters)%>%
+  summarise(meanMC = mean(mc_arthur), se = std.error(mc_arthur)) %>%
+  ggplot(aes(x=sisters, y = meanMC)) + geom_point() + geom_errorbar(aes(ymin = meanMC-se, ymax = meanMC+se), width=.2) + labs(x = "Number of sisters", y = "McArthur Score")
+
+```
+#Conclusion: There is no significant effect. 
+
+
+# 3) Is the age gap between the target child and an older sibling negatively correlated with language development, and is there an interaction effect with the age gap and the sex of the sibling? 
+## This question will be investigated in a subsample of children with 1 older sibling only.
+
+#How many participants in each category + Linear model + graphe
+
+#Look at the number of participants in each age gap category. Should we remove some?
+
+```{r reg3}
+data2 <- complete(dataelfe2, "long", include = T)
+data2$agegap <- data2$youngest - 1
+data2 <- filter(data2, data2$agegap <= 7)
+dataelfe2 <- as.mids(data2)
+modagegap <- with(dataelfe2,lm(mc_arthur ~ scale(agegap, scale = FALSE)*scale(sisters, scale = FALSE) + sex + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding))
+summary(pool(modagegap))
+dataelfe2$data %>% 
+group_by(agegap)%>%
+  summarise(meanMC = mean(mc_arthur), sd = std.error(mc_arthur), n = sum(agegap)) %>%
+  filter(n >= 100) %>% 
+  ggplot(aes(x=agegap, y = meanMC)) + geom_point() + geom_errorbar(aes(ymin = meanMC-sd, ymax = meanMC+sd)) + geom_smooth(method = "lm") + labs(x="Age gap between 2 siblings", y = "McArthur score")
+
+
+```
+
+#Conclusion:
+# 4) is there a cumulative effect of the number of siblings on language development (the more the brothers and sisters, the smaller the language score) ?
+
+#How many participants in each category + Linear model + graphe
+
+```{r reg4}
+
+modnsib <-  with(dataelfe,lm(mc_arthur ~ nsib + sex + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding))
+summary(pool(modnsib))
+dataelfe$data %>% 
+  group_by(nsib)%>%
+  summarise(meanMC = mean(mc_arthur), sd = std.error(mc_arthur)) %>%
+  ggplot(aes(x=nsib, y = meanMC)) + geom_point() + geom_errorbar(aes(ymin = meanMC-sd, ymax = meanMC+sd), position = "dodge", width = .2) + labs(x = "Number of siblings", y = "McArthur Score")
+```
+
+#Conclusion: yes, there is a significant effect of the number of siblings (the more the brothers and sisters, the smaller the language score).
+
+# 5) is the proportion of brothers correlated with language development? Is there an interaction effect with the overall number of siblings?
+
+#How many participants in each category + Linear model + graphe
+
+```{r reg5}
+data3 <- complete(dataelfe, "long", include = T)
+data3$prop <- data3$brothers/data3$nsib
+data3 <- filter(data3, nsib > 0)
+dataelfe <- as.mids(data3)
+modprop <- with(dataelfe,lm(mc_arthur ~ prop * nsib + sex + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding))
+summary(pool(modprop))
+datamore$data %>% group_by(prop)%>%
+  summarise(meanMC = mean(mc_arthur), sd = std.error(mc_arthur))%>%
+  ggplot(aes(x=prop, y = meanMC)) + geom_point() + geom_errorbar(aes(ymin = meanMC-sd, ymax = meanMC+sd), position = "dodge", width = .2) + geom_smooth(method = "lm") + labs(x = "Proportion of brothers", y = "McArthur score")
+
+```
+``` {r reg6}
+library(tidyverse)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(mice)
+library(miceadds)
+library(plotrix)
+setwd("/Users/troubledmuffin/Downloads")
+datalang <- load.Rdata2("ALL_elfe_imp_1.Rdata", path = getwd())
+#complete(dataelfe, "long", include=T)
+```
+``` {r reg7}
+data4 <- complete(datalang, "long", include = T)
+data4 <- filter(data4, language == 1 | language == 4)
+data4$language <- ifelse(data4$language == 1, "french", "other")
+datalang <- as.mids(data4)
+modlang <-  with(datalang,lm(mc_arthur ~ language + sex + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding))
+summary(pool(modlang))
+datalang$data %>%
+  group_by(language)%>%
+  summarise(meanMC = mean(mc_arthur), sd = std.error(mc_arthur)) %>%
+  ggplot(aes(x=language, y = meanMC)) + geom_point() + geom_errorbar(aes(ymin = meanMC-sd, ymax = meanMC+sd), width=.2) + labs(x="Language spoken at home", y="McArthur score")
+  
+```
+#Conclusion: no, there is no significant effect of language (but most children are french speakers)
+```{r reg8}
+modlang <-  with(datalang,lm(mc_arthur ~ language*nsib + sex + alcool + tabac + poids + agegest + agem + agep + educ2m + income + breastfeeding))
+summary(pool(modlang))
+datalang$data %>%
+  group_by(nsib,language)%>%
+  summarise(meanMC = mean(mc_arthur), sd = std.error(mc_arthur)) %>%
+  ggplot(aes(x=nsib, y = meanMC)) + geom_point(aes(shape = language)) + geom_errorbar(aes(ymin = meanMC-sd, ymax = meanMC+sd), width=.2, position = "dodge") + labs(x="Number of siblings", y="McArthur score")
+  
+```
+#Yes an interaction: 
